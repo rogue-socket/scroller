@@ -1,0 +1,46 @@
+# Gradle
+.gradle/
+build/
+*/build/
+
+# Local Gradle wrapper
+/gradle/wrapper/gradle-wrapper.jar
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.iml
+*.log
+
+# Generated
+/out/
+/bin/
+/gen/
+
+# Android Studio / IntelliJ
+.idea/
+*.ipr
+*.iws
+local.properties
+
+# Keystore
+*.jks
+*.keystore
+
+# Kotlin
+*.kotlin_module
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Lint
+lint-results.xml
+lint-results.html
+
+# Crash/heap
+hs_err_pid*
+*.hprof
