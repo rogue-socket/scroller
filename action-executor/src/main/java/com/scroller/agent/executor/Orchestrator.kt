@@ -1,7 +1,5 @@
 package com.scroller.agent.executor
 
-import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -9,7 +7,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Call
@@ -24,7 +22,6 @@ import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.suspendCancellableCoroutine
 
 class Orchestrator(
     private val loopFactory: (LoopConfig) -> AgentLoopController,
@@ -205,50 +202,3 @@ sealed class OrchestrationException(message: String? = null, cause: Throwable? =
     data object InvalidResponse : OrchestrationException("Invalid response")
     data object SchemaViolation : OrchestrationException("Schema violation")
 }
-
-@JsonClass(generateAdapter = false)
-private data class ChatCompletionRequest(
-    val model: String,
-    val messages: List<ChatMessage>,
-    @Json(name = "response_format") val responseFormat: ResponseFormat
-)
-
-@JsonClass(generateAdapter = false)
-private data class ChatMessage(
-    val role: String,
-    val content: List<ContentPart>
-)
-
-@JsonClass(generateAdapter = false)
-private data class ContentPart(
-    val type: String,
-    val text: String? = null
-)
-
-@JsonClass(generateAdapter = false)
-private data class ResponseFormat(
-    val type: String,
-    @Json(name = "json_schema") val jsonSchema: JsonSchema
-)
-
-@JsonClass(generateAdapter = false)
-private data class JsonSchema(
-    val name: String,
-    val strict: Boolean,
-    val schema: Map<String, Any>
-)
-
-@JsonClass(generateAdapter = false)
-private data class ChatCompletionResponse(
-    val choices: List<ChatChoice>
-)
-
-@JsonClass(generateAdapter = false)
-private data class ChatChoice(
-    val message: ChatAssistantMessage
-)
-
-@JsonClass(generateAdapter = false)
-private data class ChatAssistantMessage(
-    val content: String
-)
