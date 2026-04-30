@@ -11,3 +11,11 @@ data class ActionSchema(
     val text: String? = null,
     val packageName: String? = null
 )
+
+enum class ActionField {
+    X,
+    Y,
+    DIRECTION,
+    TEXT,
+    PACKAGE_NAME
+}

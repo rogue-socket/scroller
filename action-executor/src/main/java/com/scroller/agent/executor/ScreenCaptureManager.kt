@@ -34,6 +34,18 @@ class ScreenCaptureManager(
 
     // Reusable scratch bitmap for row-padding cases. The returned bitmap is always a new instance.
     private var scratchBitmap: Bitmap? = null
+    private var imageReader: ImageReader? = null
+    private var virtualDisplay: android.hardware.display.VirtualDisplay? = null
+    private var handlerThread: HandlerThread? = null
+    private var handler: Handler? = null
+    private var currentWidth: Int = 0
+    private var currentHeight: Int = 0
+
+    init {
+        projectionController.setOnStopListener {
+            releaseResources()
+        }
+    }
 
     override suspend fun capture(): ScreenFrame = withContext(ioDispatcher) {
         mutex.withLock {
@@ -52,23 +64,21 @@ class ScreenCaptureManager(
 
             logEvent("capture_start", width, height, null)
 
-            val handlerThread = HandlerThread("ScreenCapture")
-            handlerThread.start()
-            val handler = Handler(handlerThread.looper)
+            val created = ensureDisplay(width, height, densityDpi)
+            val reader = imageReader ?: throw CaptureFailedException("ImageReader not initialized")
+            val readerHandler = handler ?: throw CaptureFailedException("Handler not initialized")
+            if (created) {
+                // Give the virtual display a brief warm-up to emit the first frame.
+                kotlinx.coroutines.delay(100)
+            }
 
-            val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-            val virtualDisplay = projectionController.createVirtualDisplay(
-                name = "ScreenCapture",
-                width = width,
-                height = height,
-                densityDpi = densityDpi,
-                surface = imageReader.surface
-            )
+            val preImage = reader.acquireLatestImage()
+            preImage?.close()
 
             try {
                 val image = try {
                     withTimeout(FRAME_TIMEOUT_MS) {
-                        awaitImage(imageReader, handler)
+                        awaitImage(reader, readerHandler)
                     }
                 } catch (e: TimeoutCancellationException) {
                     logEvent("capture_failure", width, height, "timeout")
@@ -88,9 +98,8 @@ class ScreenCaptureManager(
                 logEvent("capture_failure", width, height, e.message)
                 throw CaptureFailedException("Capture failed", e)
             } finally {
-                virtualDisplay.release()
-                imageReader.close()
-                handlerThread.quitSafely()
+                // Keep resources alive while projection is active to avoid projection stop on some devices.
+                // Resources are released on projection stop or when display size changes.
             }
         }
     }
@@ -98,7 +107,10 @@ class ScreenCaptureManager(
     private suspend fun awaitImage(reader: ImageReader, handler: Handler): Image {
         return suspendCancellableCoroutine { cont ->
             val listener = ImageReader.OnImageAvailableListener { imageReader ->
-                val image = imageReader.acquireLatestImage() ?: return@OnImageAvailableListener
+                val image = imageReader.acquireLatestImage()
+                if (image == null) {
+                    return@OnImageAvailableListener
+                }
                 imageReader.setOnImageAvailableListener(null, null)
                 if (cont.isActive) {
                     cont.resume(image)
@@ -138,6 +150,41 @@ class ScreenCaptureManager(
         val created = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         scratchBitmap = created
         return created
+    }
+
+    private fun ensureDisplay(width: Int, height: Int, densityDpi: Int): Boolean {
+        if (imageReader != null && width == currentWidth && height == currentHeight) {
+            return false
+        }
+        releaseResources()
+        handlerThread = HandlerThread("ScreenCapture")
+        handlerThread?.start()
+        handler = Handler(handlerThread!!.looper)
+
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
+        virtualDisplay = projectionController.createVirtualDisplay(
+            name = "ScreenCapture",
+            width = width,
+            height = height,
+            densityDpi = densityDpi,
+            surface = imageReader!!.surface
+        )
+        currentWidth = width
+        currentHeight = height
+        logEvent("display_ready", width, height, null)
+        return true
+    }
+
+    private fun releaseResources() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
+        handlerThread?.quitSafely()
+        handlerThread = null
+        handler = null
+        currentWidth = 0
+        currentHeight = 0
     }
 
     private fun logEvent(event: String, width: Int, height: Int, reason: String?) {
